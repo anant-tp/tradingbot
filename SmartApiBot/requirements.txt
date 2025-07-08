@@ -4,5 +4,4 @@ logzero
 pytz
 pyotp
 smartapi==1.1.0
-- pycrypto
-+ pycryptodome
+pycryptodome
