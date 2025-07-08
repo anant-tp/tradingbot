@@ -1,0 +1,2 @@
+[E 250702 18:32:00 main:48] 🔥 Error fetching OHLC open price: SmartConnect.getCandleData() got an unexpected keyword argument 'exchange'
+[E 250702 18:32:00 main:171] Open price unavailable. Aborting.

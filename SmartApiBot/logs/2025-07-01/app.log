@@ -1,0 +1,3 @@
+[E 250701 03:30:42 main:75] Failed to verify SL order status: 'NoneType' object is not iterable
+[E 250701 03:31:42 main:75] Failed to verify SL order status: 'NoneType' object is not iterable
+[E 250701 07:45:07 main:75] Failed to verify SL order status: Couldn't parse the JSON response received from the server: b'Access denied because of exceeding access rate'

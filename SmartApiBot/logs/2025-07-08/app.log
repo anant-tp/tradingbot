@@ -1,0 +1,6 @@
+[E 250708 07:00:00 main:661] Strategy Error: name 'get_open_price' is not defined
+[E 250708 07:15:01 main:374] ❌ WebSocket connection error: SmartWebSocketV2.__init__() missing 2 required positional arguments: 'client_code' and 'feed_token'
+[E 250708 07:15:41 main:539] Error in resume_trailing: Couldn't parse the JSON response received from the server: b'Access denied because of exceeding access rate'
+[E 250708 07:17:24 main:539] Error in resume_trailing: Couldn't parse the JSON response received from the server: b'Access denied because of exceeding access rate'
+[E 250708 07:17:31 main:539] Error in resume_trailing: Couldn't parse the JSON response received from the server: b'Access denied because of exceeding access rate'
+[E 250708 07:17:34 main:539] Error in resume_trailing: Couldn't parse the JSON response received from the server: b'Access denied because of exceeding access rate'

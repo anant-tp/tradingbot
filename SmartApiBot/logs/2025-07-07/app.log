@@ -1,0 +1,5 @@
+[E 250707 03:45:00 main:634] Strategy Error: SmartWebSocketV2.__init__() missing 2 required positional arguments: 'client_code' and 'feed_token'
+[E 250707 03:50:00 main:634] Strategy Error: SmartWebSocketV2.__init__() missing 2 required positional arguments: 'client_code' and 'feed_token'
+[E 250707 03:58:03 smartConnect:221] Error occurred while making a POST request to https://apiconnect.angelone.in/rest/auth/angelbroking/user/v1/loginByPassword. Headers: {'Content-type': 'application/json', 'X-ClientLocalIP': '127.0.0.1', 'X-ClientPublicIP': '106.193.147.98', 'X-MACAddress': '85:a4:2e:a1:f1:eb', 'Accept': 'application/json', 'X-PrivateKey': '0rjoBk8a', 'X-UserType': 'USER', 'X-SourceID': 'WEB'}, Request: {'clientcode': 'A326710', 'password': '9552', 'totp': '206011'}, Response: HTTPSConnectionPool(host='apiconnect.angelone.in', port=443): Read timed out. (read timeout=7)
+[E 250707 03:58:03 main:673] Startup Error: HTTPSConnectionPool(host='apiconnect.angelone.in', port=443): Read timed out. (read timeout=7)
+[E 250707 04:00:00 main:634] Strategy Error: SmartWebSocketV2.__init__() missing 2 required positional arguments: 'client_code' and 'feed_token'

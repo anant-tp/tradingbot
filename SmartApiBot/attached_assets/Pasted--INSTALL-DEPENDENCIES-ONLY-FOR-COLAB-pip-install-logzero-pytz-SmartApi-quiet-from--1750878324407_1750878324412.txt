@@ -1,0 +1,331 @@
+# === INSTALL DEPENDENCIES (ONLY FOR COLAB) ===
+!pip install logzero pytz SmartApi --quiet
+
+from logzero import logger
+from SmartApi.smartConnect import SmartConnect
+import pyotp
+import time
+from datetime import datetime, timedelta
+from datetime import timezone
+import pytz
+
+
+
+# === LOGIN DETAILS ===
+api_key = "VNmStpK9"
+username = "AAAE332255"
+pwd = "0508"
+token = "CJH73I5Q23IGQWUFL67A6LN2SI"
+
+smartApi = SmartConnect(api_key)
+
+
+def is_order_executed(order_id):
+    try:
+        orders = smartApi.orderBook()
+        for order in orders["data"]:
+            if order["orderid"] == order_id and order["status"].lower() == "complete":
+                return True
+        return False
+    except Exception as e:
+        logger.error(f" Error checking order status: {e}")
+        return False
+
+
+def get_open_price_15min_candle(tradingsymbol, symboltoken, candle_time_utc):
+  try:
+    exchange = "NSE"
+    interval = "FIFTEEN_MINUTE"
+
+    ist = pytz.timezone("Asia/Kolkata")
+    candle_time_ist = candle_time_utc.replace(tzinfo=timezone.utc).astimezone(ist)
+    candle_time_ist = candle_time_ist.replace(minute=(candle_time_ist.minute // 15) * 15, second=0, microsecond=0)
+
+    from_time = candle_time_ist.strftime("%Y-%m-%d %H:%M")
+    to_time = (candle_time_ist + timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M")
+
+    logger.info(f"Requesting candle data from {from_time} to {to_time} for {tradingsymbol}")
+
+    candle_data = smartApi.getCandleData(
+            {
+                "exchange": exchange,
+                "symboltoken": symboltoken,
+                "interval": interval,
+                "fromdate": from_time,
+                "todate": to_time,
+            }
+        )
+    if candle_data is None or not candle_data.get("data"):
+      logger.error("❌ Failed to get candle data. Check symbol/token/time format.")
+      return None
+
+      open_price = float(candle_data["data"][0][1])
+      logger.info(f"✅ 15-min Open Price: ₹{open_price}")
+      return open_price
+
+  except Exception as e:
+    logger.error(f"⚠️ Error fetching 15-min candle open price: {e}")
+    return None
+
+
+def execute_strategy():
+    try:
+        instrument = smartApi.searchScrip("NSE", "AXISBANK-EQ")
+        symboltoken = instrument["data"][0]["symboltoken"]
+        tradingsymbol = instrument["data"][0]["tradingsymbol"]
+
+        ltp_data = smartApi.ltpData("NSE", tradingsymbol, symboltoken)
+        ltp = float(ltp_data["data"]["ltp"])
+
+        now = datetime.now()
+        candle_time = now.replace(
+            minute=(now.minute // 15) * 15, second=0, microsecond=0
+        )
+        open_price = get_open_price_15min_candle(
+            tradingsymbol, symboltoken, candle_time
+        )
+        if open_price is None:
+            return
+
+        logger.info(f"Open Price (15min candle): {open_price}, LTP: {ltp}")
+        # Wait until LTP moves away from open price
+        while ltp == open_price:
+            logger.info("🔄 LTP equals Open Price. Waiting for breakout...")
+            time.sleep(1)
+            ltp_data = smartApi.ltpData("NSE", tradingsymbol, symboltoken)
+            ltp = float(ltp_data["data"]["ltp"])
+            logger.info(f"Updated LTP: {ltp}")
+
+        if ltp > open_price:
+            transaction_type = "SELL"
+            entry_price = round(open_price - 0.10, 2)
+            IS_BUY = False
+            logger.info("SELL condition met.")
+        elif ltp < open_price:
+            transaction_type = "BUY"
+            entry_price = round(open_price + 0.10, 2)
+            IS_BUY = True
+            logger.info("BUY condition met.")
+        else:
+            logger.warning("No trade condition met.")
+            return
+
+        rms_data = smartApi.rmsLimit()
+        available_cash = (
+            float(rms_data["data"].get("availablecash", 0)) if rms_data["status"] else 0
+        )
+        quantity = int((available_cash * 5) // entry_price)
+        if quantity <= 0:
+            logger.warning("Not enough margin.paisa add kar...")
+            return
+
+        logger.info(f"Entry: ₹{entry_price}, Qty: {quantity}")
+
+        current_ltp_data = smartApi.ltpData("NSE", tradingsymbol, symboltoken)
+        current_ltp = float(current_ltp_data["data"]["ltp"])
+
+        if (transaction_type == "BUY" and current_ltp >= entry_price) or (
+            transaction_type == "SELL" and current_ltp <= entry_price
+        ):
+            logger.info("⚡ LTP already crossed trigger. Placing MARKET order.")
+            entry_orderparams = {
+                "variety": "NORMAL",
+                "tradingsymbol": tradingsymbol,
+                "symboltoken": symboltoken,
+                "transactiontype": transaction_type,
+                "exchange": "NSE",
+                "ordertype": "MARKET",
+                "producttype": "INTRADAY",
+                "duration": "DAY",
+                "quantity": quantity,
+            }
+        else:
+            entry_orderparams = {
+                "variety": "STOPLOSS",
+                "tradingsymbol": tradingsymbol,
+                "symboltoken": symboltoken,
+                "transactiontype": transaction_type,
+                "exchange": "NSE",
+                "ordertype": "STOPLOSS_LIMIT",
+                "producttype": "INTRADAY",
+                "duration": "DAY",
+                "price": entry_price,
+                "triggerprice": entry_price,
+                "quantity": quantity,
+            }
+
+        entry_orderid = smartApi.placeOrder(entry_orderparams)
+        logger.info(f"✅ Entry Order Placed. ID: {entry_orderid}")
+
+        for _ in range(60):
+            if is_order_executed(entry_orderid):
+                logger.info("✅ Entry Executed.")
+                initial_sl = (
+                    round(entry_price - 10.00, 2)
+                    if IS_BUY
+                    else round(entry_price + 10.00, 2)
+                )
+                stoploss_order_params = {
+                    "variety": "STOPLOSS",
+                    "tradingsymbol": tradingsymbol,
+                    "symboltoken": symboltoken,
+                    "transactiontype": "SELL" if IS_BUY else "BUY",
+                    "exchange": "NSE",
+                    "ordertype": "STOPLOSS_LIMIT",
+                    "producttype": "INTRADAY",
+                    "duration": "DAY",
+                    "price": initial_sl,
+                    "triggerprice": initial_sl,
+                    "quantity": quantity,
+                }
+                sl_orderid = smartApi.placeOrder(stoploss_order_params)
+                logger.info(f"📌 Initial SL placed at ₹{initial_sl} → ID: {sl_orderid}")
+                break
+            logger.info(" Waiting for execution...")
+            time.sleep(5)
+        else:
+            logger.warning("⌛ Order not executed in time.")
+            return
+
+        logger.info("🚀 Starting Trailing SL using modify...")
+
+        current_sl_price = initial_sl
+        first_trigger_done = False
+        next_trail_trigger = (
+            round(entry_price + 2.10, 2) if IS_BUY else round(entry_price - 2.10, 2)
+        )
+
+        while True:
+            try:
+                ltp_data = smartApi.ltpData("NSE", tradingsymbol, symboltoken)
+                ltp = float(ltp_data["data"]["ltp"])
+
+                if IS_BUY:
+                    if not first_trigger_done and ltp >= next_trail_trigger:
+                        current_sl_price = round(entry_price - 2.00, 2)
+                        first_trigger_done = True
+                        modify_order = {
+                            "variety": "STOPLOSS",
+                            "orderid": sl_orderid,
+                            "tradingsymbol": tradingsymbol,
+                            "symboltoken": symboltoken,
+                            "transactiontype": "SELL",
+                            "exchange": "NSE",
+                            "ordertype": "STOPLOSS_LIMIT",
+                            "producttype": "INTRADAY",
+                            "duration": "DAY",
+                            "price": current_sl_price,
+                            "triggerprice": current_sl_price,
+                            "quantity": quantity,
+                        }
+                        smartApi.modifyOrder(modify_order)
+                        logger.info(f" First SL trail to ₹{current_sl_price}")
+                        next_trail_trigger = round(current_sl_price + 1.10, 2)
+                    elif first_trigger_done and ltp >= next_trail_trigger:
+                        if is_order_executed(sl_orderid):
+                            logger.info(" SL already hit. Exiting trailing loop.")
+                            break
+                        current_sl_price = round(current_sl_price + 1.00, 2)
+                        if current_sl_price <= ltp - 0.10:
+                            modify_order = {
+                                "variety": "STOPLOSS",
+                                "orderid": sl_orderid,
+                                "tradingsymbol": tradingsymbol,
+                                "symboltoken": symboltoken,
+                                "transactiontype": "SELL",
+                                "exchange": "NSE",
+                                "ordertype": "STOPLOSS_LIMIT",
+                                "producttype": "INTRADAY",
+                                "duration": "DAY",
+                                "price": current_sl_price,
+                                "triggerprice": current_sl_price,
+                                "quantity": quantity,
+                            }
+                            smartApi.modifyOrder(modify_order)
+                            logger.info(f" Trailed SL to ₹{current_sl_price}")
+                            next_trail_trigger = round(current_sl_price + 1.10, 2)
+                else:
+                    if not first_trigger_done and ltp <= next_trail_trigger:
+                        current_sl_price = round(entry_price + 2.00, 2)
+                        first_trigger_done = True
+                        modify_order = {
+                            "variety": "STOPLOSS",
+                            "orderid": sl_orderid,
+                            "tradingsymbol": tradingsymbol,
+                            "symboltoken": symboltoken,
+                            "transactiontype": "BUY",
+                            "exchange": "NSE",
+                            "ordertype": "STOPLOSS_LIMIT",
+                            "producttype": "INTRADAY",
+                            "duration": "DAY",
+                            "price": current_sl_price,
+                            "triggerprice": current_sl_price,
+                            "quantity": quantity,
+                        }
+                        smartApi.modifyOrder(modify_order)
+                        logger.info(f" First SL trail to ₹{current_sl_price}")
+                        next_trail_trigger = round(current_sl_price - 1.10, 2)
+                    elif first_trigger_done and ltp <= next_trail_trigger:
+                        if is_order_executed(sl_orderid):
+                            logger.info(" SL already hit. Exiting trailing loop.")
+                            break
+                        current_sl_price = round(current_sl_price - 1.00, 2)
+                        if current_sl_price >= ltp + 0.10:
+                            modify_order = {
+                                "variety": "STOPLOSS",
+                                "orderid": sl_orderid,
+                                "tradingsymbol": tradingsymbol,
+                                "symboltoken": symboltoken,
+                                "transactiontype": "BUY",
+                                "exchange": "NSE",
+                                "ordertype": "STOPLOSS_LIMIT",
+                                "producttype": "INTRADAY",
+                                "duration": "DAY",
+                                "price": current_sl_price,
+                                "triggerprice": current_sl_price,
+                                "quantity": quantity,
+                            }
+                            smartApi.modifyOrder(modify_order)
+                            logger.info(f" Trailed SL to ₹{current_sl_price}")
+                            next_trail_trigger = round(current_sl_price - 1.10, 2)
+
+                time.sleep(1)
+            except Exception as e:
+                logger.warning(f" Network error during SL trailing: {e}. Retrying in 3 seconds...")
+                time.sleep(3)
+                continue  # retry loop without exiting
+               # logger.error(f" Error while trailing SL: {e}")
+               # break
+
+    except Exception as e:
+        logger.error(f" Error in strategy execution: {e}")
+
+
+def wait_until_time(hour, minute):
+    logger.info(f" Waiting for {hour:02d}:{minute:02d} to start strategy...")
+    while True:
+        now = datetime.now(pytz.timezone("Asia/Kolkata"))
+        logger.debug(f"Checking time: {now.strftime('%H:%M:%S')}")
+        if now.hour == hour and now.minute == minute:
+            logger.info(" Time matched. Running strategy.")
+            execute_strategy()
+            break
+        time.sleep(1)
+
+
+if __name__ == "__main__":
+    try:
+        totp = pyotp.TOTP(token).now()
+        data = smartApi.generateSession(username, pwd, totp)
+        if not data["status"]:
+            logger.error(" Login failed.")
+            exit()
+
+        smartApi.getfeedToken()
+        smartApi.generateToken(data["data"]["refreshToken"])
+        smartApi.getProfile(data["data"]["refreshToken"])
+
+        wait_until_time(14,30)
+
+    except Exception as e:
+        logger.error(f" Startup error: {e}")

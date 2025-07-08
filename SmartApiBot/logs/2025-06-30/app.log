@@ -1,0 +1,6 @@
+[E 250630 07:30:00 main:257] Strategy Error: Couldn't parse the JSON response received from the server: b'Access denied because of exceeding access rate'
+[E 250630 07:30:00 main:257] Strategy Error: Couldn't parse the JSON response received from the server: b'Access denied because of exceeding access rate'
+[E 250630 08:15:00 main:233] Strategy Error: Couldn't parse the JSON response received from the server: b'Access denied because of exceeding access rate'
+[E 250630 08:15:00 main:233] Strategy Error: Couldn't parse the JSON response received from the server: b'Access denied because of exceeding access rate'
+[E 250630 08:15:00 main:233] Strategy Error: Couldn't parse the JSON response received from the server: b'Access denied because of exceeding access rate'
+[E 250630 08:15:10 main:74] Failed to verify SL order status: Couldn't parse the JSON response received from the server: b'Access denied because of exceeding access rate'
