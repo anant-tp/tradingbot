@@ -3,4 +3,4 @@ gunicorn
 logzero
 pytz
 pyotp
-smartapi==1.1.3
+smartapi==1.1.0
